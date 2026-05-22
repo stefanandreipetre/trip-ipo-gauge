@@ -42,30 +42,57 @@ def _now_label() -> str:
     return datetime.now().strftime("%H:%M:%S")
 
 
+def _hour_bucket(epoch: float) -> int:
+    return int(epoch // 3600) * 3600
+
+
+def _hour_label(bucket: int) -> str:
+    return datetime.fromtimestamp(bucket).strftime("%H:00")
+
+
 def _append_snapshot(payload: dict) -> None:
+    """
+    Pastreaza un singur snapshot pentru fiecare ora calendaristica.
+    Refresh-ul ramane la 5 secunde, dar istoricul afisat jos nu mai adauga
+    randuri la fiecare refresh. Pentru ora curenta pastram ultima valoare citita,
+    iar pentru orele trecute ramane valoarea salvata in bucket-ul acelei ore.
+    """
     now = time.time()
     subscribed = _as_int(payload.get("subscribed"))
     if subscribed <= 0:
         return
+
+    bucket = _hour_bucket(now)
     item = {
         "epoch": now,
-        "time": datetime.now().strftime("%H:%M"),
+        "bucket": bucket,
+        "time": _hour_label(bucket),
         "subscribed": subscribed,
         "percentage": round((subscribed / RETAIL_TOTAL) * 100, 2) if RETAIL_TOTAL else 0,
     }
-    if _history and _history[-1]["subscribed"] == subscribed and now - _history[-1]["epoch"] < 55:
-        return
-    _history.append(item)
-    cutoff = now - HISTORY_SECONDS
-    while _history and _history[0]["epoch"] < cutoff:
+
+    if _history and _history[-1].get("bucket") == bucket:
+        _history[-1] = item
+    else:
+        _history.append(item)
+
+    cutoff_bucket = _hour_bucket(now - HISTORY_SECONDS)
+    while _history and _history[0].get("bucket", 0) < cutoff_bucket:
         _history.pop(0)
 
 
 def _snapshots_for_response():
-    cutoff = time.time() - HISTORY_SECONDS
-    recent = [x for x in _history if x["epoch"] >= cutoff]
-    return [{"time": x["time"], "subscribed": x["subscribed"], "percentage": x["percentage"]} for x in recent[-24:]]
-
+    cutoff_bucket = _hour_bucket(time.time() - HISTORY_SECONDS)
+    recent = [x for x in _history if x.get("bucket", 0) >= cutoff_bucket]
+    recent = sorted(recent, key=lambda x: x.get("bucket", 0))[-5:]
+    return [
+        {
+            "time": x["time"],
+            "subscribed": x["subscribed"],
+            "percentage": x["percentage"],
+        }
+        for x in recent
+    ]
 
 def _fetch_from_home() -> dict:
     url = _home_data_url()
