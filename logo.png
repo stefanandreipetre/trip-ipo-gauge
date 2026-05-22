@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#f1f5f9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="TRIP IPO">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<title>TRIP IPO Gauge</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;background:#f1f5f9;display:flex;align-items:flex-start;justify-content:center;font-family:Georgia,serif;padding:16px;padding-top:env(safe-area-inset-top,16px)}
+.card{width:100%;max-width:520px;background:#fff;border-radius:20px;border:1px solid #e2e8f0;box-shadow:0 4px 24px rgba(0,0,0,0.08);overflow:hidden}
+.header{background:linear-gradient(90deg,rgba(0,174,239,0.07),rgba(249,115,22,0.05));border-bottom:1px solid #e2e8f0;padding:16px 20px 12px;display:flex;align-items:center;justify-content:space-between}
+.ticker{background:#00AEEF;color:#fff;font-family:monospace;font-weight:700;font-size:13px;padding:2px 8px;border-radius:4px;letter-spacing:2px}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+.tabs{display:flex;border-bottom:1px solid #e2e8f0}
+.tab{flex:1;padding:10px 0;border:none;cursor:pointer;background:transparent;color:#94a3b8;font-size:12px;letter-spacing:1px;font-family:inherit;border-bottom:2px solid transparent;transition:all .2s}
+.tab.active{background:rgba(0,174,239,0.08);color:#00AEEF;border-bottom-color:#00AEEF}
+#tab-info{display:none}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;padding:0 20px}
+.stat{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px}
+.stat-label{color:#64748b;font-size:10px;letter-spacing:.5px;margin-bottom:2px}
+.stat-val{font-size:16px;font-weight:700;font-family:monospace}
+.stat-sub{color:#94a3b8;font-size:9px;margin-top:1px}
+.bar-bg{height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin:0 20px 14px}
+.bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#00AEEF,#f97316);transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+.bar-labels{display:flex;justify-content:space-between;padding:0 20px;margin-bottom:4px}
+.bar-labels span{color:#94a3b8;font-size:10px}
+.error-box{margin:0 20px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;color:#dc2626;font-size:11px;display:none}
+.snap-title{color:#94a3b8;font-size:10px;margin:0 20px 6px;letter-spacing:.5px;border-top:1px solid #e2e8f0;padding-top:10px}
+.snap-row{display:flex;justify-content:space-between;margin:0 20px 3px;flex-wrap:wrap}
+.snap-row span:first-child{color:#64748b;font-size:10px}
+.snap-row span:last-child{color:#00AEEF;font-size:10px;font-family:monospace}
+.info-list{padding:14px 20px}
+.info-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;gap:4px}
+.info-row span:first-child{color:#64748b;font-size:11px}
+.info-row span:last-child{color:#1e293b;font-size:11px;font-family:monospace;text-align:right}
+.footer{border-top:1px solid #e2e8f0;padding:8px 20px;display:flex;justify-content:space-between;background:#f8fafc}
+.footer span{color:#94a3b8;font-size:9px}
+.live-badge{display:inline-flex;align-items:center;gap:5px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;padding:3px 10px;font-size:11px;color:#16a34a;font-family:monospace}
+.live-badge.err{background:#fef2f2;border-color:#fecaca;color:#dc2626}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:12px">
+      <img src="/logo.png" alt="Christian Tour" style="height:50px;width:50px;object-fit:contain;border-radius:8px;flex-shrink:0">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <span class="ticker">TRIP</span>
+          <span style="color:#64748b;font-size:11px;letter-spacing:1px">BVB &middot; IPO 2026</span>
+        </div>
+        <div style="color:#1e293b;font-weight:700;font-size:15px">Christian '76 Tour SA</div>
+        <div style="color:#94a3b8;font-size:10px;margin-top:1px">Subscrieri Retail &middot; 21&ndash;28 mai 2026</div>
+      </div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div id="badge" class="live-badge">
+        <span id="dot" style="width:7px;height:7px;border-radius:50%;background:#16a34a;display:inline-block;animation:pulse 1.5s infinite"></span>
+        <span id="btxt">Live</span>
+      </div>
+      <div id="ts" style="color:#94a3b8;font-size:10px;margin-top:4px"></div>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('gauge',this)">&#128202; GAUGE</button>
+    <button class="tab" onclick="showTab('info',this)">&#8505; PROSPECT</button>
+  </div>
+  <div id="tab-gauge">
+    <div style="display:flex;justify-content:center;padding:20px 20px 4px">
+      <svg width="280" height="210" viewBox="0 0 280 210">
+        <path d="M 69.29 84.29 A 100 100 0 1 1 69.29 225.71" fill="none" stroke="#e2e8f0" stroke-width="18" stroke-linecap="round"/>
+        <path id="arc" d="" fill="none" stroke="#00AEEF" stroke-width="18" stroke-linecap="round" style="transition:d 1.2s cubic-bezier(.4,0,.2,1),stroke .4s"/>
+        <g id="marks"></g>
+        <line id="needle" x1="140" y1="155" x2="69.29" y2="84.29" stroke="#f97316" stroke-width="3.5" stroke-linecap="round" style="transition:x2 1.2s,y2 1.2s"/>
+        <circle cx="140" cy="155" r="8" fill="#f97316"/>
+        <circle cx="140" cy="155" r="3.5" fill="#ffffff"/>
+        <text id="ptxt" x="140" y="148" text-anchor="middle" fill="#00AEEF" font-size="30" font-weight="bold" font-family="monospace">0.0%</text>
+        <text x="140" y="168" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="Georgia,serif">din tran&#537;a retail</text>
+      </svg>
+    </div>
+    <div id="errbox" class="error-box"></div>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Subscrise (Bid Vol.)</div><div class="stat-val" id="s-sub" style="color:#00AEEF">—</div><div class="stat-sub" id="s-lei">—</div></div>
+      <div class="stat"><div class="stat-label">Disponibile</div><div class="stat-val" id="s-rem" style="color:#64748b">—</div><div class="stat-sub" id="s-rnote">r&#259;mase</div></div>
+      <div class="stat"><div class="stat-label">Tran&#351;&#259; retail</div><div class="stat-val" style="color:#00AEEF">41.75M</div><div class="stat-sub">ac&#355;iuni (50% din ofert&#259;)</div></div>
+      <div class="stat"><div class="stat-label">Pre&#355; subscriere</div><div class="stat-val" style="color:#a78bfa">2,135 lei</div><div class="stat-sub">fix retail &middot; -5% early bird</div></div>
+    </div>
+    <div class="bar-labels"><span>0%</span><span>Tran&#351;&#259; complet&#259;: 41.75M</span></div>
+    <div class="bar-bg"><div class="bar-fill" id="bar" style="width:0%"></div></div>
+    <div style="margin-bottom:10px"></div>
+    <div class="snap-title">SNAPSHOTS CONFIRMATE (surs&#259;: Bursa.ro)</div>
+    <div class="snap-row"><span>21 mai ~13:30</span><span>5.60M (13.4%) — dup&#259; 3.5h</span></div>
+    <div class="snap-row" style="margin-bottom:14px"><span>22 mai EOD</span><span>8.35M (20.0%) — o cincime</span></div>
+  </div>
+  <div id="tab-info">
+    <div class="info-list">
+      <div class="info-row"><span>Simbol</span><span>TRIP &middot; BVB</span></div>
+      <div class="info-row"><span>Perioad&#259; ofert&#259;</span><span>21&ndash;28 mai 2026</span></div>
+      <div class="info-row"><span>Data alocare</span><span>29 mai 2026</span></div>
+      <div class="info-row"><span>Pre&#355; fix retail</span><span>2,135 lei/ac&#355;iune</span></div>
+      <div class="info-row"><span>Discount early bird</span><span>-5% pân&#259; pe 25 mai</span></div>
+      <div class="info-row"><span>Tran&#351;&#259; retail</span><span>~41.75M ac&#355;iuni (50%)</span></div>
+      <div class="info-row"><span>Realocare</span><span>p&#226;n&#259; la 40% &icirc;ntre tran&#351;e</span></div>
+      <div class="info-row"><span>Manager ofert&#259;</span><span>BT Capital Partners</span></div>
+      <div class="info-row"><span>Prospect ASF</span><span>19 mai 2026</span></div>
+      <div class="info-row"><span>Sursa date</span><span>bvb.ro &middot; Bid Vol.</span></div>
+    </div>
+  </div>
+  <div class="footer">
+    <span>Live BVB &middot; refresh 5s &middot; Nu e recomandare de investitii</span>
+    <span>Christian '76 Tour SA</span>
+  </div>
+</div>
+<script>
+const RT=41750000,PR=2.135,CX=140,CY=155,R=100;
+function pxy(d){const r=d*Math.PI/180;return[CX+R*Math.cos(r),CY+R*Math.sin(r)];}
+function ap(s,e){const[x1,y1]=pxy(s),[x2,y2]=pxy(e),d=((e-s)+360)%360;if(d<0.01)return'';return`M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${R} ${R} 0 ${d>180?1:0} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;}
+(function(){const g=document.getElementById('marks');[0,25,50,75,100].forEach(m=>{const dg=225+(m/100)*270,rd=dg*Math.PI/180,ux=Math.cos(rd),uy=Math.sin(rd);g.innerHTML+=`<line x1="${(CX+(R+8)*ux).toFixed(1)}" y1="${(CY+(R+8)*uy).toFixed(1)}" x2="${(CX+(R+16)*ux).toFixed(1)}" y2="${(CY+(R+16)*uy).toFixed(1)}" stroke="#cbd5e1" stroke-width="1.5"/><text x="${(CX+(R+26)*ux).toFixed(1)}" y="${(CY+(R+26)*uy).toFixed(1)}" fill="#94a3b8" font-size="9" text-anchor="middle" dominant-baseline="middle" font-family="monospace">${m}%</text>`;});})();
+function col(p){return p<30?'#00AEEF':p<60?'#34d399':p<90?'#fbbf24':'#f97316';}
+function fn(n){return n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':n.toString();}
+function fl(n){return new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON',maximumFractionDigits:0}).format(n);}
+function apply(d){
+  const s=d.subscribed,p=Math.min(s/RT*100,100),c=col(p),ov=s>RT;
+  const ed=225+(p/100)*270;
+  document.getElementById('arc').setAttribute('d',p<0.05?'':ap(225,ed));
+  document.getElementById('arc').setAttribute('stroke',c);
+  const[nx,ny]=pxy(ed);
+  document.getElementById('needle').setAttribute('x2',nx.toFixed(2));
+  document.getElementById('needle').setAttribute('y2',ny.toFixed(2));
+  const pt=document.getElementById('ptxt');pt.textContent=p.toFixed(1)+'%';pt.setAttribute('fill',c);
+  document.getElementById('s-sub').textContent=fn(s);document.getElementById('s-sub').style.color=c;
+  document.getElementById('s-lei').textContent=fl(s*PR);
+  document.getElementById('s-rem').textContent=ov?'SUPRASUBSCRIS!':fn(RT-s);
+  document.getElementById('s-rem').style.color=ov?'#f97316':'#64748b';
+  document.getElementById('s-rnote').textContent=ov?'Oferta acoperita!':'ramase';
+  document.getElementById('bar').style.width=Math.min(p,100)+'%';
+  document.getElementById('ts').textContent=d.timestamp;
+  const b=document.getElementById('badge'),dt=document.getElementById('dot'),bt=document.getElementById('btxt'),eb=document.getElementById('errbox');
+  if(d.error){b.className='live-badge err';dt.style.background='#dc2626';bt.textContent='Eroare';eb.style.display='block';eb.textContent='Eroare: '+d.error;}
+  else{b.className='live-badge';dt.style.background='#16a34a';bt.textContent='Live';eb.style.display='none';}
+}
+async function poll(){try{const r=await fetch('/data');apply(await r.json());}catch(e){console.warn(e);}}
+poll();setInterval(poll,5000);
+function showTab(n,b){document.getElementById('tab-gauge').style.display=n=='gauge'?'block':'none';document.getElementById('tab-info').style.display=n=='info'?'block':'none';document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');}
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js');}
+</script>
+</body>
+</html>
