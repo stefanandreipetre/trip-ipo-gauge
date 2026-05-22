@@ -19,79 +19,63 @@ HISTORY_SECONDS = 5 * 60 * 60
 _session = requests.Session()
 _cache = {"at": 0.0, "payload": None}
 _history = []
+_next_snapshot_bucket = None
 
 
-def _home_data_url() -> str:
-    if not HOME_SERVER_URL:
-        return ""
-    return urljoin(HOME_SERVER_URL + "/", "data")
-
-
-def _as_int(value, default=0):
-    try:
-        if value is None:
-            return default
-        if isinstance(value, str):
-            value = value.replace(".", "").replace(",", "").strip()
-        return int(float(value))
-    except Exception:
-        return default
-
-
-def _now_label() -> str:
-    return datetime.now().strftime("%H:%M:%S")
-
-
-def _hour_bucket(epoch: float) -> int:
-    return int(epoch // 3600) * 3600
-
-
-def _hour_label(bucket: int) -> str:
-    return datetime.fromtimestamp(bucket).strftime("%H:00")
+def _next_full_hour_bucket(epoch: float) -> int:
+    current = _hour_bucket(epoch)
+    return current + 3600
 
 
 def _append_snapshot(payload: dict) -> None:
     """
-    Pastreaza un singur snapshot pentru fiecare ora calendaristica.
-    Refresh-ul ramane la 5 secunde, dar istoricul afisat jos nu mai adauga
-    randuri la fiecare refresh. Pentru ora curenta pastram ultima valoare citita,
-    iar pentru orele trecute ramane valoarea salvata in bucket-ul acelei ore.
+    Refresh-ul vizual ramane la 5 secunde, dar snapshot-urile se salveaza
+    doar din ora in ora. La prima pornire nu etichetam valoarea curenta cu
+    o ora trecuta. Prima salvare va fi la ora fixa urmatoare, apoi cate una
+    la fiecare ora.
     """
+    global _next_snapshot_bucket
+
     now = time.time()
     subscribed = _as_int(payload.get("subscribed"))
     if subscribed <= 0:
         return
 
-    bucket = _hour_bucket(now)
+    if _next_snapshot_bucket is None:
+        _next_snapshot_bucket = _next_full_hour_bucket(now)
+        return
+
+    if now < _next_snapshot_bucket:
+        return
+
     item = {
         "epoch": now,
-        "bucket": bucket,
-        "time": _hour_label(bucket),
+        "bucket": _next_snapshot_bucket,
+        "time": _hour_label(_next_snapshot_bucket),
         "subscribed": subscribed,
         "percentage": round((subscribed / RETAIL_TOTAL) * 100, 2) if RETAIL_TOTAL else 0,
     }
 
-    if _history and _history[-1].get("bucket") == bucket:
+    if _history and _history[-1].get("bucket") == item["bucket"]:
         _history[-1] = item
     else:
         _history.append(item)
 
-    cutoff_bucket = _hour_bucket(now - HISTORY_SECONDS)
-    while _history and _history[0].get("bucket", 0) < cutoff_bucket:
+    while _next_snapshot_bucket <= now:
+        _next_snapshot_bucket += 3600
+
+    while len(_history) > 5:
         _history.pop(0)
 
 
 def _snapshots_for_response():
-    cutoff_bucket = _hour_bucket(time.time() - HISTORY_SECONDS)
-    recent = [x for x in _history if x.get("bucket", 0) >= cutoff_bucket]
-    recent = sorted(recent, key=lambda x: x.get("bucket", 0))[-5:]
     return [
         {
             "time": x["time"],
             "subscribed": x["subscribed"],
             "percentage": x["percentage"],
         }
-        for x in recent
+        for x in sorted(_history, key=lambda x: x.get("bucket", 0))[-5:]
     ]
 
 def _fetch_from_home() -> dict:
@@ -199,19 +183,19 @@ INDEX_HTML = r"""<!doctype html>
     *{box-sizing:border-box} body{margin:0;min-height:100vh;display:grid;place-items:start center;padding:0 4px}.phone{width:100%;max-width:650px;background:#fff;border:1px solid var(--line);border-radius:0 0 24px 24px;overflow:hidden;box-shadow:0 16px 38px rgba(15,23,42,.08)}
     .top{height:104px;padding:18px 30px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(90deg,#eefcff 0%,#fff7f0 100%);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:16px;min-width:0}.logoBox{width:70px;height:62px;border-radius:10px;background:#fff;display:grid;place-items:center;overflow:hidden}.logoBox img{width:64px;height:58px;object-fit:contain}.chip{display:inline-block;background:var(--blue);color:white;border-radius:5px;padding:3px 11px;font:700 15px/1.1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:3px}.meta{margin-left:10px;color:#425378;font-size:16px;letter-spacing:1px}h1{margin:2px 0 0;font-size:24px;line-height:1.05;color:#071b49}.sub{color:#7b8aad;font-size:14px;margin-top:2px}.live{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:7px}.pill{border:1px solid #8af0b6;background:#effff6;color:#07883e;border-radius:999px;padding:5px 13px;font:14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#21bf62;margin-right:7px}.clock{font-size:13px;color:#7b8aad;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
     .tabs{display:grid;grid-template-columns:1fr 1fr;height:48px;border-bottom:1px solid var(--line)}.tab{border:0;background:#fff;color:#8a93ad;font:16px Georgia,'Times New Roman',serif;letter-spacing:1px;cursor:pointer;border-bottom:2px solid transparent}.tab.active{background:#eefcff;color:#008fd3;border-bottom-color:var(--blue)}.panel{display:none;padding:26px 30px 14px}.panel.active{display:block}
-    .gaugeWrap{height:260px;position:relative;display:grid;place-items:center}svg{overflow:visible}.gBg{fill:none;stroke:#e4ebf2;stroke-width:22;stroke-linecap:round}.gVal{fill:none;stroke:var(--green);stroke-width:22;stroke-linecap:round;transition:stroke-dashoffset .7s ease}.needle{stroke:var(--orange);stroke-width:5;stroke-linecap:round;transform-origin:160px 160px;transition:transform .7s ease}.hub{fill:var(--orange);stroke:white;stroke-width:5}.center{position:absolute;top:156px;left:0;right:0;text-align:center}.pct{font:800 34px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--green)}.small{color:#7884a4;font-size:13px}.tick{position:absolute;color:#7b8aad;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.t0{left:178px;top:84px}.t25{left:344px;top:47px}.t50{right:128px;top:193px}.t75{right:172px;top:54px}.t100{right:205px;top:84px}
+    .gaugeWrap{height:260px;position:relative;display:grid;place-items:center}svg{overflow:visible}.gBg{fill:none;stroke:#e4ebf2;stroke-width:22;stroke-linecap:round}.gVal{fill:none;stroke:var(--green);stroke-width:22;stroke-linecap:round;transition:stroke-dashoffset .7s ease}.needle{stroke:var(--orange);stroke-width:5;stroke-linecap:round;transform-origin:160px 160px;transition:transform .7s ease}.hub{fill:var(--orange);stroke:white;stroke-width:5}.center{position:absolute;top:156px;left:0;right:0;text-align:center}.pct{font:800 34px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--green)}.small{color:#7884a4;font-size:13px}.tick{display:none}.svgTick{fill:#7b8aad;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
     .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}.box{border:1px solid #d8e5f0;background:#fbfdff;border-radius:12px;padding:12px 16px;min-height:80px}.box .name{color:#445477;font-size:15px}.box .num{margin-top:4px;font:800 20px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--blue)}.box .note{margin-top:3px;color:#7e8aad;font-size:12px}.progressNote{display:flex;justify-content:space-between;color:#7b8aad;font-size:13px;margin-top:16px}.bar{height:11px;background:#e3ebf3;border-radius:999px;overflow:hidden;margin:6px 0 14px}.fill{height:100%;width:0%;background:linear-gradient(90deg,var(--blue),var(--orange));border-radius:999px;transition:width .7s ease}.snap{border-top:1px solid var(--line);padding-top:12px}.snapTitle{color:#8a97b4;font-size:14px;text-transform:uppercase;margin-bottom:8px}.snapRows{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#008ff0;line-height:1.5;max-height:118px;overflow:auto}.err{display:none;margin:10px 0;padding:10px 12px;border:1px solid #fecaca;background:#fff1f2;color:#b91c1c;border-radius:12px;font-size:13px}
     .prospectRows{margin-top:2px}.row{display:grid;grid-template-columns:1fr 1.35fr;gap:18px;padding:9px 0;border-bottom:1px solid #edf2f7;font-size:15px}.row div:last-child{text-align:right;color:#020b24;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}footer{padding:12px 30px;border-top:1px solid var(--line);color:#8a97b4;font-size:12px;display:flex;justify-content:space-between;gap:10px}
-    @media(max-width:560px){.top{padding:15px 18px}.panel{padding:22px 18px 12px}.stats{grid-template-columns:1fr}h1{font-size:21px}.logoBox{width:62px}.meta{display:block;margin-left:0;margin-top:4px}.t0{left:34%}.t25{left:58%}.t50{right:12%}.t75,.t100{display:none}}
+    @media(max-width:560px){.top{padding:15px 18px}.panel{padding:22px 18px 12px}.stats{grid-template-columns:1fr}h1{font-size:21px}.logoBox{width:62px}.meta{display:block;margin-left:0;margin-top:4px}}
   </style>
 </head>
 <body>
   <main class="phone">
     <header class="top"><div class="brand"><div class="logoBox"><img src="__LOGO_DATA_URI__" alt="Christian Tour"></div><div><div><span class="chip">TRIP</span><span class="meta">BVB · IPO 2026</span></div><h1>Christian '76 Tour SA</h1><div class="sub">Subscrieri Retail · 21–28 mai 2026</div></div></div><div class="live"><div id="status" class="pill"><span class="dot"></span>Live BVB</div><div id="clock" class="clock">—</div></div></header>
     <nav class="tabs"><button class="tab active" data-tab="gauge">📊 GAUGE</button><button class="tab" data-tab="prospect">ℹ️ PROSPECT</button></nav>
-    <section id="gauge" class="panel active"><div class="gaugeWrap"><svg width="360" height="230" viewBox="0 0 320 220" aria-label="Gauge 0 pana la 100%"><path id="arcBg" class="gBg" d="M 40 160 A 120 120 0 0 1 280 160"></path><path id="arcVal" class="gVal" d="M 40 160 A 120 120 0 0 1 280 160"></path><line id="needle" class="needle" x1="160" y1="160" x2="255" y2="160"></line><circle class="hub" cx="160" cy="160" r="10"></circle></svg><div class="tick t0">0%</div><div class="tick t25">25%</div><div class="tick t50">50%</div><div class="tick t75">75%</div><div class="tick t100">100%</div><div class="center"><div id="pct" class="pct">—</div><div class="small">din transa retail</div></div></div>
+    <section id="gauge" class="panel active"><div class="gaugeWrap"><svg width="360" height="230" viewBox="0 0 320 220" aria-label="Gauge 0 pana la 100%"><path id="arcBg" class="gBg" d="M 40 160 A 120 120 0 0 1 280 160"></path><path id="arcVal" class="gVal" d="M 40 160 A 120 120 0 0 1 280 160"></path><text class="svgTick" x="34" y="190">0%</text><text class="svgTick" x="82" y="72">25%</text><text class="svgTick" x="151" y="48">50%</text><text class="svgTick" x="226" y="72">75%</text><text class="svgTick" x="268" y="190">100%</text><line id="needle" class="needle" x1="160" y1="160" x2="255" y2="160"></line><circle class="hub" cx="160" cy="160" r="10"></circle></svg><div class="center"><div id="pct" class="pct">—</div><div class="small">din transa retail</div></div></div>
       <div class="stats"><div class="box"><div class="name">Subscrise (Bid Vol.)</div><div id="subscribed" class="num">—</div><div id="subron" class="note">— RON</div></div><div class="box"><div class="name">Disponibile</div><div id="available" class="num" style="color:#657695">—</div><div class="note">ramase</div></div><div class="box"><div class="name">Transa retail</div><div id="retail" class="num">41.75M</div><div class="note">actiuni (50% din oferta)</div></div><div class="box"><div class="name">Pret subscriere</div><div id="price" class="num" style="color:#8b7cf6">2,135 lei</div><div class="note">fix retail · -5% early bird</div></div></div>
-      <div class="progressNote"><span>0%</span><span>Transa completa: 41.75M actiuni</span></div><div class="bar"><div id="fill" class="fill"></div></div><div id="errbox" class="err"></div><div class="snap"><div class="snapTitle">Snapshot-uri ultimele 5 ore</div><div id="snapRows" class="snapRows">Nu exista inca snapshot-uri suficiente.</div></div></section>
+      <div class="progressNote"><span>0%</span><span id="progressCurrent">— actual</span><span>100% · Transa completa: 41.75M actiuni</span></div><div class="bar"><div id="fill" class="fill"></div></div><div id="errbox" class="err"></div><div class="snap"><div class="snapTitle">Snapshot-uri ultimele 5 ore</div><div id="snapRows" class="snapRows">Nu exista inca snapshot-uri suficiente.</div></div></section>
     <section id="prospect" class="panel"><div class="prospectRows"><div class="row"><div>Simbol bursier</div><div>TRIP · BVB</div></div><div class="row"><div>Perioada oferta</div><div>21–28 mai 2026</div></div><div class="row"><div>Data alocare</div><div>29 mai 2026</div></div><div class="row"><div>Interval pret</div><div>1,875 – 2,135 lei/actiune</div></div><div class="row"><div>Pret fix retail</div><div>2,135 lei/actiune</div></div><div class="row"><div>Discount early bird</div><div>-5% subscrieri 21–25 mai</div></div><div class="row"><div>Transa retail</div><div>~41.750.000 actiuni (50%)</div></div><div class="row"><div>Realocare posibila</div><div>pana la 40% intre transe</div></div><div class="row"><div>Optiune supra-alocare</div><div>pana la 8.350.000 actiuni</div></div><div class="row"><div>Manager oferta</div><div>BT Capital Partners</div></div><div class="row"><div>Prospect aprobat ASF</div><div>19 mai 2026</div></div><div class="row"><div>Sursa date live</div><div>bvb.ro · Bid Vol. TRIP</div></div></div></section>
     <footer><span>Date live BVB · refresh 5s · Bid Vol = subscrieri retail acumulate</span><span>Christian '76 Tour SA</span></footer>
   </main>
@@ -222,7 +206,7 @@ INDEX_HTML = r"""<!doctype html>
   function renderSnaps(rows){ if(!rows || !rows.length){ $('snapRows').textContent = 'Nu exista inca snapshot-uri suficiente.'; return; } $('snapRows').innerHTML = rows.slice().reverse().map(r => `${r.time} — ${humanM(r.subscribed)} (${Number(r.percentage).toFixed(2)}%)`).join('<br>'); }
   function switchTab(name){ document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name)); document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === name)); }
   document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
-  async function refresh(){ try{ const r = await fetch('/api/data?ts=' + Date.now(), { cache:'no-store' }); const data = await r.json(); const subscribed = Number(data.subscribed || 0); const pct = Number(data.percentage || 0); const total = Number(data.retail_total || 41750000); const available = Number(data.available ?? Math.max(total - subscribed, 0)); const ron = subscribed * 2.135; $('clock').textContent = data.timestamp || new Date().toLocaleTimeString('ro-RO'); $('pct').textContent = pct ? pct.toFixed(1) + '%' : '—'; $('subscribed').textContent = subscribed ? humanM(subscribed) : '—'; $('subron').textContent = subscribed ? fmt.format(Math.round(ron)) + ' RON' : '— RON'; $('available').textContent = humanM(available); $('retail').textContent = humanM(total); $('price').textContent = data.price || '2,135 lei'; setGauge(pct); renderSnaps(data.snapshots || []); if(data.ok && !data.error){ $('status').innerHTML = '<span class="dot"></span>Live BVB'; $('errbox').style.display = 'none'; } else { $('status').innerHTML = '<span class="dot"></span>Cache'; $('errbox').style.display = 'block'; $('errbox').textContent = data.error || 'Eroare necunoscuta'; } } catch(err){ $('status').innerHTML = '<span class="dot"></span>Eroare'; $('errbox').style.display = 'block'; $('errbox').textContent = 'Nu pot citi /api/data: ' + err; } }
+  async function refresh(){ try{ const r = await fetch('/api/data?ts=' + Date.now(), { cache:'no-store' }); const data = await r.json(); const subscribed = Number(data.subscribed || 0); const pct = Number(data.percentage || 0); const total = Number(data.retail_total || 41750000); const available = Number(data.available ?? Math.max(total - subscribed, 0)); const ron = subscribed * 2.135; $('clock').textContent = data.timestamp || new Date().toLocaleTimeString('ro-RO'); $('pct').textContent = pct ? pct.toFixed(1) + '%' : '—'; $('progressCurrent').textContent = pct ? pct.toFixed(1) + '% actual' : '— actual'; $('subscribed').textContent = subscribed ? humanM(subscribed) : '—'; $('subron').textContent = subscribed ? fmt.format(Math.round(ron)) + ' RON' : '— RON'; $('available').textContent = humanM(available); $('retail').textContent = humanM(total); $('price').textContent = data.price || '2,135 lei'; setGauge(pct); renderSnaps(data.snapshots || []); if(data.ok && !data.error){ $('status').innerHTML = '<span class="dot"></span>Live BVB'; $('errbox').style.display = 'none'; } else { $('status').innerHTML = '<span class="dot"></span>Cache'; $('errbox').style.display = 'block'; $('errbox').textContent = data.error || 'Eroare necunoscuta'; } } catch(err){ $('status').innerHTML = '<span class="dot"></span>Eroare'; $('errbox').style.display = 'block'; $('errbox').textContent = 'Nu pot citi /api/data: ' + err; } }
   refresh(); setInterval(refresh, 5000);
 </script>
 </body>
