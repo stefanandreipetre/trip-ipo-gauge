@@ -2,6 +2,9 @@ import os
 import time
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+BUCHAREST = ZoneInfo("Europe/Bucharest")
 from urllib.parse import urljoin
 
 import requests
@@ -36,7 +39,7 @@ def _as_int(value):
 
 
 def _now_label():
-    return datetime.now().strftime("%H:%M:%S")
+    return datetime.now(BUCHAREST).strftime("%H:%M:%S")
 
 
 def _hour_bucket(epoch=None):
@@ -50,7 +53,7 @@ def _next_full_hour_bucket(epoch=None):
 
 
 def _hour_label(epoch):
-    return datetime.fromtimestamp(epoch).strftime("%H:00")
+    return datetime.fromtimestamp(epoch, tz=BUCHAREST).strftime("%H:00")
 
 
 def _home_data_url():
