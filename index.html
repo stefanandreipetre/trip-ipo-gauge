@@ -46,12 +46,15 @@
     .bar-fill{height:100%;width:0%;background:linear-gradient(90deg,#00AEEF 0%,#06275c 100%);border-radius:7px;transition:width .7s ease;position:relative}
     .bar-pct-label{position:absolute;right:7px;top:0;height:100%;display:flex;align-items:center;font-size:8px;font-family:monospace;color:#fff;font-weight:700;opacity:0;transition:opacity .3s}
     /* EOD estimate */
-    .eod-wrap{padding:10px 22px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #e2e8f0}
+    .eod-wrap{padding:10px 22px 14px;border-top:1px solid #e2e8f0}
+    .eod-summary{display:flex;align-items:center;justify-content:space-between;gap:12px}
     .eod-text{display:flex;flex-direction:column;gap:2px}
     .eod-label{font-size:9px;color:#94a3b8;letter-spacing:.8px;text-transform:uppercase}
     .eod-sub{font-size:10px;color:#94a3b8}
     .eod-val{font-size:20px;font-weight:700;font-family:monospace;color:#06275c;line-height:1}
     .eod-val.muted{color:#94a3b8}
+    .eod-chart{width:100%;max-width:440px;height:auto;display:block;margin:10px auto 0}
+    .eod-chart.hidden{display:none}
     /* Snapshots */
     .snap-section{padding:12px 22px 14px;border-top:1px solid #e2e8f0}
     .snap-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
@@ -167,11 +170,14 @@
     </div>
 
     <div class="eod-wrap">
-      <div class="eod-text">
-        <span class="eod-label">Estimare EOD (17:00)</span>
-        <span class="eod-sub" id="eod-sub">&mdash;</span>
+      <div class="eod-summary">
+        <div class="eod-text">
+          <span class="eod-label">Estimare EOD (17:00)</span>
+          <span class="eod-sub" id="eod-sub">&mdash;</span>
+        </div>
+        <span class="eod-val muted" id="eod-val">&mdash;</span>
       </div>
-      <span class="eod-val muted" id="eod-val">&mdash;</span>
+      <svg id="eod-chart" class="eod-chart hidden" viewBox="0 0 360 180" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
 
     <div class="err-box" id="errbox"></div>
@@ -308,6 +314,57 @@ function renderEOD(snaps){
       v.textContent=e.eod.toFixed(2)+'%';v.classList.remove('muted');
       s.textContent=`extrapolat din ${e.points} puncte · ~${(e.perHour>=0?'+':'')}${e.perHour.toFixed(2)}%/h`;break;
   }
+  renderChart(snaps,e);
+}
+function renderChart(snaps,e){
+  const svg=document.getElementById('eod-chart');
+  const session=sessionSnapshots(snaps);
+  if(e.state==='pre-open'||!session.length){svg.classList.add('hidden');svg.innerHTML='';return;}
+  svg.classList.remove('hidden');
+
+  const W=360,H=180,ML=34,MR=10,MT=12,MB=20;
+  const pw=W-ML-MR, ph=H-MT-MB;
+  const X0=MARKET_OPEN_SEC, X1=MARKET_CLOSE_SEC;
+  const sx=sec=>ML+(sec-X0)/(X1-X0)*pw;
+  let ymax=Math.max(...session.map(p=>p.pct),e.eod||0,e.finalPct||0,5);
+  ymax=Math.max(5,Math.ceil(ymax*1.15/5)*5);
+  const sy=v=>MT+ph-(v/ymax)*ph;
+
+  const parts=[];
+  // horizontal grid + y labels (5 lines)
+  for(let i=0;i<=4;i++){
+    const yv=ymax*i/4, y=sy(yv);
+    parts.push(`<line x1="${ML}" y1="${y}" x2="${ML+pw}" y2="${y}" stroke="#f1f5f9"/>`);
+    parts.push(`<text x="${ML-5}" y="${y+3}" text-anchor="end" font-size="8" fill="#94a3b8" font-family="monospace">${yv.toFixed(0)}%</text>`);
+  }
+  // vertical grid + hour labels (09..17)
+  for(let h=9;h<=17;h++){
+    const x=sx(h*3600);
+    parts.push(`<line x1="${x}" y1="${MT}" x2="${x}" y2="${MT+ph}" stroke="#f1f5f9"/>`);
+    parts.push(`<text x="${x}" y="${MT+ph+11}" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="monospace">${h}</text>`);
+  }
+  // extrapolation (only when estimating): dashed orange from last data point to 17:00
+  if(e.state==='estimate'&&session.length>=2){
+    let sumx=0,sumy=0,sumxy=0,sumxx=0,n=session.length;
+    for(const p of session){sumx+=p.sec;sumy+=p.pct;sumxy+=p.sec*p.pct;sumxx+=p.sec*p.sec;}
+    const slope=(n*sumxy-sumx*sumy)/(n*sumxx-sumx*sumx);
+    const intercept=(sumy-slope*sumx)/n;
+    const last=session[session.length-1];
+    const yEnd=Math.max(0,intercept+slope*X1);
+    parts.push(`<line x1="${sx(last.sec).toFixed(1)}" y1="${sy(last.pct).toFixed(1)}" x2="${sx(X1).toFixed(1)}" y2="${sy(yEnd).toFixed(1)}" stroke="#f97316" stroke-width="2" stroke-dasharray="4 3"/>`);
+    parts.push(`<circle cx="${sx(X1).toFixed(1)}" cy="${sy(yEnd).toFixed(1)}" r="3.5" fill="#f97316"/>`);
+    const ty=Math.max(MT+9,sy(yEnd)-7);
+    parts.push(`<text x="${(sx(X1)-6).toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="end" font-size="10" font-weight="700" fill="#f97316" font-family="monospace">${yEnd.toFixed(1)}%</text>`);
+  }
+  // actual data polyline + points
+  if(session.length>=2){
+    const d=session.map((p,i)=>`${i?'L':'M'} ${sx(p.sec).toFixed(1)} ${sy(p.pct).toFixed(1)}`).join(' ');
+    parts.push(`<path d="${d}" fill="none" stroke="#06275c" stroke-width="2"/>`);
+  }
+  for(const p of session){
+    parts.push(`<circle cx="${sx(p.sec).toFixed(1)}" cy="${sy(p.pct).toFixed(1)}" r="2.5" fill="#06275c"/>`);
+  }
+  svg.innerHTML=parts.join('');
 }
 
 function applyData(data){
