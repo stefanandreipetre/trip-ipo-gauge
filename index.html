@@ -106,13 +106,13 @@
 
   <div id="tab-gauge">
     <div class="center-gauge">
-      <svg width="280" height="200" viewBox="0 0 280 200">
-        <path d="M 69.29 84.29 A 100 100 0 1 1 69.29 225.71"
+      <svg width="280" height="280" viewBox="0 20 280 280">
+        <path d="M 69.29 225.71 A 100 100 0 1 1 210.71 225.71"
           fill="none" stroke="#e2e8f0" stroke-width="18" stroke-linecap="round"/>
         <path id="arc" d="" fill="none" stroke="#06275c" stroke-width="18" stroke-linecap="round"
           style="transition:d .7s ease,stroke .4s"/>
         <g id="marks"></g>
-        <line id="needle" x1="140" y1="155" x2="69.29" y2="84.29"
+        <line id="needle" x1="140" y1="155" x2="69.29" y2="225.71"
           stroke="#f97316" stroke-width="4" stroke-linecap="round"
           style="transition:x2 .7s ease,y2 .7s ease"/>
         <circle cx="140" cy="155" r="8" fill="#f97316"/>
@@ -222,7 +222,7 @@ function arcColor(p){return p<30?'#00AEEF':p<60?'#22c55e':p<90?'#f59e0b':'#f9731
 (function(){
   const g=document.getElementById('marks');
   [0,25,50,75,100].forEach(m=>{
-    const deg=225+(m/100)*270,rad=deg*Math.PI/180,ux=Math.cos(rad),uy=Math.sin(rad);
+    const deg=135+(m/100)*270,rad=deg*Math.PI/180,ux=Math.cos(rad),uy=Math.sin(rad);
     const x1=(CX+(R+8)*ux).toFixed(1),y1=(CY+(R+8)*uy).toFixed(1);
     const x2=(CX+(R+16)*ux).toFixed(1),y2=(CY+(R+16)*uy).toFixed(1);
     const xL=(CX+(R+26)*ux).toFixed(1),yL=(CY+(R+26)*uy).toFixed(1);
@@ -240,9 +240,9 @@ function applyData(data){
   const col  = arcColor(pct);
 
   // Arc
-  const endDeg=225+(pct/100)*270;
+  const endDeg=135+(pct/100)*270;
   const arcEl=document.getElementById('arc');
-  arcEl.setAttribute('d', pct<0.05?'':arcPath(225,endDeg));
+  arcEl.setAttribute('d', pct<0.05?'':arcPath(135,endDeg));
   arcEl.setAttribute('stroke', col);
   // Needle
   const[nx,ny]=pxy(endDeg);
