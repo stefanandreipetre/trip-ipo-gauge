@@ -369,7 +369,8 @@ function renderChart(snaps,e){
 
 function applyData(data){
   const sub  = Number(data.subscribed||0);
-  const pct  = Math.min(sub/RT*100, 100);
+  const rawPct = sub/RT*100;
+  const pct  = Math.min(rawPct, 100);
   const avail= Number(data.available??Math.max(RT-sub,0));
   const ron  = sub*PRICE, eur = ron/EUR;
   const col  = arcColor(pct);
@@ -385,7 +386,7 @@ function applyData(data){
   document.getElementById('needle').setAttribute('y2',ny.toFixed(2));
   // Center %
   const pt=document.getElementById('ptxt');
-  pt.textContent=sub>0?pct.toFixed(1)+'%':'—'; pt.setAttribute('fill',col);
+  pt.textContent=sub>0?rawPct.toFixed(1)+'%':'—'; pt.setAttribute('fill',col);
 
   // Metrics
   document.getElementById('m-sub').textContent  = sub>0?humanM(sub):'—';
@@ -400,7 +401,7 @@ function applyData(data){
   const barW=Math.min(pct,100);
   document.getElementById('bar-fill').style.width=barW+'%';
   const lbl=document.getElementById('bar-pct-label');
-  lbl.textContent=pct.toFixed(1)+'%'; lbl.style.opacity=barW>15?'1':'0';
+  lbl.textContent=rawPct.toFixed(1)+'%'; lbl.style.opacity=barW>15?'1':'0';
   document.getElementById('prog-label').textContent=
     sub>0?humanM(sub)+' / 41.75M ac\u021biuni':'— / 41.75M ac\u021biuni';
 
